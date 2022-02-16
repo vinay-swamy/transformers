@@ -112,15 +112,40 @@ class DefaultTransfomerBlock(nn.Module):
         x = self.ln2(x) 
         return x
 
-class DecoderTranformerBlock(nn.module):
-    def __init__(self, input_output_dim, head_dim, num_heads):
+class DecoderTranformerBlock(nn.Module):
+    def __init__(self, input_output_dim, head_dim, num_heads,ff_internal_dim, dropout_frac):
         super(DecoderTranformerBlock, self).__init__()
-        self.mha = MultiHeadAttention(input_output_dim, head_dim, num_heads)
-        self.transformer_block = DefaultTransfomerBlock()
+        self.self_attn = nn.Sequential(
+            MultiHeadAttention(input_output_dim, head_dim, num_heads),
+            nn.Dropout(dropout_frac)
+        )
+        self.ln1 = nn.LayerNorm(input_output_dim)
+
+        self.encoder_decoder_attn =  nn.Sequential(
+            MultiHeadAttention(input_output_dim, head_dim, num_heads),
+            nn.Dropout(dropout_frac)
+        )
+        self.ln2 = nn.LayerNorm(input_output_dim)
+
+        self.ff = nn.Sequential(
+            nn.Linear( input_output_dim, ff_internal_dim, bias = True ) ,
+            nn.ReLU(),
+            nn.Linear(ff_internal_dim, input_output_dim, bias = True),
+            nn.Dropout(dropout_frac)
+            )
+        self.ln3 = nn.LayerNorm(input_output_dim)
+        
+    def forward(self, x, encoder_memory):
+        ## x is either 
+        ## - output of an embedding layer
+        ## - output of previous decoder block
+        x = self.ln1(x + self.self_attn(x, x, x))
+        x = self.ln2(x + self.encoder_decoder_attn(x, encoder_memory, encoder_memory))
+        x = self.ln3(x + self.ff(x))
+        return x
+    def make_attn_mask(self, seqlen, batchsize):
+        mask = torch.tril(torch.ones((seqlen,seqlen)), diagonal=-1 ).permute(1,0)
+        mask[mask==1]=-float('inf')
+        return mask.unsqueeze(0)
     
-
-
-
 # %%
-
-
